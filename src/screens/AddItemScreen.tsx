@@ -12,10 +12,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import BackButton from '../components/BackButton';
 import CustomButton from '../components/CustomButton';
+import Loader from '../components/Loader';
+import ValidationAlert from '../components/ValidationAlert';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from '../i18n/LanguageContext';
 import { kiranaStoreItemsBilingual } from '../data/kiranaStoreItemsBilingual';
 import { kiranaStoreBrandsBilingual } from '../data/kiranaStoreBrandsBilingual';
+import { isBrandApplicableForItem } from '../utils/brandApplicability';
+import { createInventoryItem } from '../services/sqlite/kiranaDb';
 
 const categoryKeys = ['grocery', 'beverages', 'snacks', 'household'] as const;
 
@@ -91,6 +95,8 @@ const AddItemScreen: React.FC = () => {
   const nav = useNavigation<any>();
   const [brandId, setBrandId] = useState('');
   const [name, setName] = useState('');
+  const [selectedItemId, setSelectedItemId] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const [categoryKey, setCategoryKey] = useState<(typeof categoryKeys)[number]>(
     categoryKeys[0],
@@ -102,21 +108,146 @@ const AddItemScreen: React.FC = () => {
   const [sellingPrice, setSellingPrice] = useState('');
   const [initialStock, setInitialStock] = useState('');
   const [minStock, setMinStock] = useState('');
+  const [validationMessage, setValidationMessage] = useState('');
+  const [validationType, setValidationType] = useState<
+    'error' | 'success' | 'warning'
+  >('error');
 
-  const save = () => {
-    // basic validation
-    if (!name.trim()) {
-      Alert.alert(
-        t('error') || 'Error',
-        t('pleaseEnterItemName') || 'Please enter item name',
+  const shouldShowBrandField = !!name && isBrandApplicableForItem(name);
+
+  const showValidationMessage = (
+    message: string,
+    type: 'error' | 'success' | 'warning' = 'error',
+  ) => {
+    setValidationMessage(message);
+    setValidationType(type);
+  };
+
+  const resetForm = () => {
+    setBrandId('');
+    setName('');
+    setSelectedItemId('');
+    setCategoryKey(categoryKeys[0]);
+    setUnit(units[0]);
+    setPurchasePrice('');
+    setSellingPrice('');
+    setInitialStock('');
+    setMinStock('');
+    setValidationMessage('');
+  };
+
+  const save = async () => {
+    if (!selectedItemId) {
+      showValidationMessage(
+        t('pleaseEnterItemName') || 'Please select an item',
+        'error',
       );
       return;
     }
-    // Here you would persist the item to DB / state
-    Alert.alert(
-      t('success') || 'Success',
-      `${name} ${t('itemSaved') || 'saved successfully'}`,
-    );
+
+    if (shouldShowBrandField && !brandId) {
+      showValidationMessage('Please select brand', 'error');
+      return;
+    }
+
+    const normalizedPurchasePrice = Number(purchasePrice);
+    const normalizedSellingPrice = Number(sellingPrice);
+    const normalizedInitialStock = Number(initialStock);
+    const normalizedMinStock = Number(minStock);
+
+    if (purchasePrice.trim() === '') {
+      showValidationMessage('Please enter purchase price', 'error');
+      return;
+    }
+    if (sellingPrice.trim() === '') {
+      showValidationMessage('Please enter selling price', 'error');
+      return;
+    }
+    if (initialStock.trim() === '') {
+      showValidationMessage('Please enter initial stock', 'error');
+      return;
+    }
+    if (minStock.trim() === '') {
+      showValidationMessage('Please enter minimum stock alert', 'error');
+      return;
+    }
+    if (
+      !Number.isFinite(normalizedPurchasePrice) ||
+      normalizedPurchasePrice < 0
+    ) {
+      showValidationMessage('Purchase price must be a valid number', 'error');
+      return;
+    }
+    if (
+      !Number.isFinite(normalizedSellingPrice) ||
+      normalizedSellingPrice <= 0
+    ) {
+      showValidationMessage('Selling price must be greater than zero', 'error');
+      return;
+    }
+    if (
+      !Number.isFinite(normalizedInitialStock) ||
+      normalizedInitialStock < 0
+    ) {
+      showValidationMessage(
+        'Initial stock must be a valid non-negative number',
+        'error',
+      );
+      return;
+    }
+    if (!Number.isFinite(normalizedMinStock) || normalizedMinStock < 0) {
+      showValidationMessage(
+        'Minimum stock must be a valid non-negative number',
+        'error',
+      );
+      return;
+    }
+    if (normalizedSellingPrice < normalizedPurchasePrice) {
+      showValidationMessage(
+        'Selling price should not be less than purchase price',
+        'error',
+      );
+      return;
+    }
+
+    const selectedDisplay =
+      kiranaStoreItemsBilingual.find(item => item.id === selectedItemId)
+        ?.displayName || '';
+    const match = selectedDisplay.match(/^(.*)\((.*)\)\s*$/);
+    const nameHi = match?.[1]?.trim() || name;
+    const nameEn = match?.[2]?.trim() || name;
+
+    setIsSaving(true);
+
+    try {
+      await createInventoryItem({
+        nameEn: nameEn || name.trim(),
+        nameHi: nameHi || name.trim(),
+        quantity: normalizedInitialStock,
+        unit,
+        category: categoryKey,
+        purchasePrice: normalizedPurchasePrice,
+        sellingPrice: normalizedSellingPrice,
+        minStockAlert: normalizedMinStock,
+        totalSold: 0,
+        updatedAt: new Date().toISOString(),
+      });
+
+      showValidationMessage(
+        `${nameEn || nameHi} ${t('itemSaved') || 'saved successfully'}`,
+        'success',
+      );
+      resetForm();
+      nav.goBack();
+    } catch (error) {
+      console.error('[AddItemScreen] save error:', error);
+      Alert.alert(
+        t('error') || 'Error',
+        'Failed to save item. Please try again.',
+      );
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -131,35 +262,18 @@ const AddItemScreen: React.FC = () => {
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
       >
+        <ValidationAlert
+          visible={!!validationMessage}
+          message={validationMessage}
+          type={validationType}
+        />
         <View style={styles.card}>
-          <Text style={styles.label}>{'Brand'}</Text>
-          <TouchableOpacity
-            style={styles.input}
-            onPress={() => {
-              nav.navigate('SelectBrand', {
-                selectedBrandId: brandId || undefined,
-                onSelect: (id: string) => {
-                  setBrandId(id);
-                },
-              });
-            }}
-          >
-            <Text
-              style={{ color: theme.colors.textPrimary, fontWeight: '700' }}
-            >
-              {brandId
-                ? kiranaStoreBrandsBilingual.find(b => b.id === brandId)
-                    ?.displayName
-                : t('selectItem') || 'Select brand'}
-            </Text>
-          </TouchableOpacity>
-
           <Text style={styles.label}>{t('itemName') || 'Item name'}</Text>
           <TouchableOpacity
             style={styles.input}
             onPress={() => {
               nav.navigate('SelectItemName', {
-                selectedItemId: name || undefined,
+                selectedItemId: selectedItemId || undefined,
                 onSelect: (itemId: string) => {
                   const display =
                     kiranaStoreItemsBilingual.find(i => i.id === itemId)
@@ -167,6 +281,8 @@ const AddItemScreen: React.FC = () => {
                   const match = display.match(/^(.*)\((.*)\)\s*$/);
                   const hi = match?.[1]?.trim() || '';
                   const en = match?.[2]?.trim() || '';
+                  setSelectedItemId(itemId);
+                  setBrandId('');
                   setName(language === 'hindi' ? hi : en);
                 },
               });
@@ -178,6 +294,32 @@ const AddItemScreen: React.FC = () => {
               {name || t('selectItem') || 'Select item'}
             </Text>
           </TouchableOpacity>
+
+          {shouldShowBrandField ? (
+            <>
+              <Text style={styles.label}>{'Brand'}</Text>
+              <TouchableOpacity
+                style={styles.input}
+                onPress={() => {
+                  nav.navigate('SelectBrand', {
+                    selectedBrandId: brandId || undefined,
+                    onSelect: (id: string) => {
+                      setBrandId(id);
+                    },
+                  });
+                }}
+              >
+                <Text
+                  style={{ color: theme.colors.textPrimary, fontWeight: '700' }}
+                >
+                  {brandId
+                    ? kiranaStoreBrandsBilingual.find(b => b.id === brandId)
+                        ?.displayName
+                    : t('selectItem') || 'Select brand'}
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : null}
 
           <Text style={styles.label}>{t('categoryLabel') || 'Category'}</Text>
           <View style={styles.pickerRow}>
@@ -270,12 +412,21 @@ const AddItemScreen: React.FC = () => {
           />
 
           <CustomButton
-            title={t('save') || 'Save'}
+            title={
+              isSaving
+                ? t('pleaseWait') || 'Please wait...'
+                : t('save') || 'Save'
+            }
             onPress={save}
             style={styles.saveBtn}
+            disabled={isSaving}
           />
         </View>
       </KeyboardAwareScrollView>
+      <Loader
+        visible={isSaving}
+        message={t('pleaseWait') || 'Please wait...'}
+      />
     </SafeAreaView>
   );
 };

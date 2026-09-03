@@ -22,6 +22,7 @@ import type { InventoryItem } from '../data/inventoryItems';
 import { inventoryItems } from '../data/inventoryItems';
 import type { KiranaStoreBrandBilingual } from '../data/kiranaStoreBrandsBilingual';
 import { kiranaStoreBrandsBilingual } from '../data/kiranaStoreBrandsBilingual';
+import { isBrandApplicableForItem } from '../utils/brandApplicability';
 // Removed unused ArrowLeft import
 
 const splitDisplayName = (displayName: string) => {
@@ -168,6 +169,10 @@ const AddBillItemScreen: React.FC = () => {
 
   const pricePerUnit = selectedItem?.sellingPrice ?? 0;
   const unit = selectedItem?.unit ?? '';
+  const shouldShowBrandField =
+    !!selectedItem &&
+    (isBrandApplicableForItem(selectedItem.nameHi) ||
+      isBrandApplicableForItem(selectedItem.nameEn));
 
   const qty = useMemo(() => {
     const n = parseFloat(qtyText.replace(/,/g, ''));
@@ -189,13 +194,14 @@ const AddBillItemScreen: React.FC = () => {
     navigation.navigate('SelectItemName', {
       selectedItemId: itemId || undefined,
       onSelect: (selectedItem: string) => {
+        setBrandId('');
         setItemId(selectedItem);
       },
     });
   };
 
   const onAdd = () => {
-    if (!brandId) {
+    if (shouldShowBrandField && !brandId) {
       Alert.alert(t('error') || 'Error', 'Please select brand');
       return;
     }
@@ -243,14 +249,18 @@ const AddBillItemScreen: React.FC = () => {
           </Text>
         </TouchableOpacity>
 
-        <Text style={[styles.label, { marginTop: 12 }]}>Brand</Text>
-        <TouchableOpacity style={styles.input} onPress={goSelectBrand}>
-          <Text style={styles.valueText} numberOfLines={1}>
-            {selectedBrand
-              ? getBrandText(selectedBrand, language)
-              : t('selectItem') || 'Select brand'}
-          </Text>
-        </TouchableOpacity>
+        {shouldShowBrandField ? (
+          <>
+            <Text style={[styles.label, { marginTop: 12 }]}>Brand</Text>
+            <TouchableOpacity style={styles.input} onPress={goSelectBrand}>
+              <Text style={styles.valueText} numberOfLines={1}>
+                {selectedBrand
+                  ? getBrandText(selectedBrand, language)
+                  : t('selectItem') || 'Select brand'}
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : null}
 
         <View style={styles.row}>
           <View style={{ flex: 1 }}>

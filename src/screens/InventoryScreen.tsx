@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
   StyleSheet,
@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { AlertTriangle, Package } from 'lucide-react-native';
 import Loader from '../components/Loader';
 import SearchTextInput from '../components/SearchTextInput';
@@ -56,9 +56,11 @@ const InventoryScreen: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => {
-    loadItems();
-  }, [loadItems]);
+  useFocusEffect(
+    useCallback(() => {
+      loadItems();
+    }, [loadItems]),
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

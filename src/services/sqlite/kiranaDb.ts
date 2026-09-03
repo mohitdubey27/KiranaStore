@@ -802,6 +802,61 @@ export const getTopSellingItems = async (
 /**
  * Get all inventory items (for screens that need the full list from DB).
  */
+export const createInventoryItem = async (payload: {
+  nameEn: string;
+  nameHi: string;
+  quantity?: number;
+  unit?: string;
+  category?: string;
+  purchasePrice?: number | null;
+  sellingPrice?: number | null;
+  minStockAlert?: number | null;
+  totalSold?: number;
+  updatedAt?: string | null;
+}): Promise<string> => {
+  const database = await getDb();
+  const normalizedNameEn = payload.nameEn?.trim() || '';
+  const normalizedNameHi = payload.nameHi?.trim() || '';
+
+  if (!normalizedNameEn && !normalizedNameHi) {
+    throw new Error('Inventory item name is required');
+  }
+
+  const createdAt = payload.updatedAt || new Date().toISOString();
+
+  try {
+    let insertId: number | null = null;
+
+    await database.transaction(async (tx: any) => {
+      const [result] = await tx.executeSql(
+        `INSERT INTO ${TABLE_INVENTORY_ITEMS} (${COL_NAME_EN}, ${COL_NAME_HI}, ${COL_QUANTITY}, ${COL_UNIT}, ${COL_CATEGORY}, ${COL_PURCHASE_PRICE}, ${COL_SELLING_PRICE}, ${COL_MIN_STOCK_ALERT}, ${COL_TOTAL_SOLD}, ${COL_UPDATED_AT}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        [
+          normalizedNameEn,
+          normalizedNameHi,
+          payload.quantity ?? 0,
+          payload.unit || 'pcs',
+          payload.category || 'grocery',
+          payload.purchasePrice ?? null,
+          payload.sellingPrice ?? null,
+          payload.minStockAlert ?? null,
+          payload.totalSold ?? 0,
+          createdAt,
+        ],
+      );
+
+      insertId = (result as any)?.insertId;
+      if (insertId === undefined || insertId === null) {
+        throw new Error('Failed to insert inventory item');
+      }
+    });
+
+    return String(insertId);
+  } catch (error) {
+    console.error('[createInventoryItem] error:', error);
+    throw error;
+  }
+};
+
 export const getInventoryItems = async (): Promise<InventoryItemRecord[]> => {
   const database = await getDb();
 

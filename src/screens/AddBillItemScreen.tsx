@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 
 import {
   View,
@@ -10,18 +10,19 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
+  useFocusEffect,
   useNavigation,
   useRoute,
-  type RouteProp,
 } from '@react-navigation/native';
-import type { RootStackParamList } from '../types/navigation';
 import { useTheme } from '../theme';
 import BackButton from '../components/BackButton';
 import { useTranslation } from '../i18n/LanguageContext';
-import type { InventoryItem } from '../data/inventoryItems';
-import { inventoryItems } from '../data/inventoryItems';
 import type { KiranaStoreBrandBilingual } from '../data/kiranaStoreBrandsBilingual';
 import { kiranaStoreBrandsBilingual } from '../data/kiranaStoreBrandsBilingual';
+import {
+  getInventoryItems,
+  type InventoryItemRecord,
+} from '../services/sqlite';
 import { isBrandApplicableForItem } from '../utils/brandApplicability';
 // Removed unused ArrowLeft import
 
@@ -152,15 +153,27 @@ const AddBillItemScreen: React.FC = () => {
   const route = useRoute<any>();
 
   const params = (route.params ?? {}) as AddBillItemRouteParams;
+  const { onGoBack } = params as { onGoBack: (draft: BillItemDraft) => void };
+  const [items, setItems] = useState<InventoryItemRecord[]>([]);
   const [brandId, setBrandId] = useState<string>('');
   const [itemId, setItemId] = useState<string>(params.initialItemId ?? '');
 
   const [qtyText, setQtyText] = useState('');
 
-  const selectedItem: InventoryItem | null = useMemo(() => {
+  const loadItems = useCallback(async () => {
+    setItems(await getInventoryItems());
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadItems();
+    }, [loadItems]),
+  );
+
+  const selectedItem: InventoryItemRecord | null = useMemo(() => {
     if (!itemId) return null;
-    return inventoryItems.find(i => i.id === itemId) ?? null;
-  }, [itemId]);
+    return items.find(i => i.id === itemId) ?? null;
+  }, [itemId, items]);
 
   const selectedBrand: KiranaStoreBrandBilingual | null = useMemo(() => {
     if (!brandId) return null;
@@ -193,9 +206,9 @@ const AddBillItemScreen: React.FC = () => {
   const goSelectItem = () => {
     navigation.navigate('SelectItemName', {
       selectedItemId: itemId || undefined,
-      onSelect: (selectedItem: string) => {
+      onSelect: (selectedItemId: string) => {
         setBrandId('');
-        setItemId(selectedItem);
+        setItemId(selectedItemId);
       },
     });
   };
@@ -221,12 +234,8 @@ const AddBillItemScreen: React.FC = () => {
       pricePerUnit,
     };
 
-    // Pass draft back to the previous CreateBill screen.
-    navigation.navigate({
-      name: 'CreateBill',
-      params: { __billItemDraft: draft },
-      merge: true,
-    } as any);
+    onGoBack(draft);
+    navigation.goBack();
   };
 
   return (

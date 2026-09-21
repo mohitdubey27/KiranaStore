@@ -144,36 +144,6 @@ const createTables = async (database: any) => {
     console.log(
       '[createTables] bill_items table created/verified successfully',
     );
-
-    // Seed inventory items from static data if empty
-    const [countResult] = await database.executeSql(
-      `SELECT COUNT(*) as count FROM ${TABLE_INVENTORY_ITEMS};`,
-    );
-    const count = (countResult as any).rows?.item(0)?.count || 0;
-    if (count === 0) {
-      console.log('[createTables] Seeding inventory items...');
-      const { inventoryItems } = require('../../data/inventoryItems');
-      for (const item of inventoryItems) {
-        await database.executeSql(
-          `INSERT INTO ${TABLE_INVENTORY_ITEMS} (${COL_NAME_EN}, ${COL_NAME_HI}, ${COL_QUANTITY}, ${COL_UNIT}, ${COL_CATEGORY}, ${COL_PURCHASE_PRICE}, ${COL_SELLING_PRICE}, ${COL_MIN_STOCK_ALERT}, ${COL_TOTAL_SOLD}, ${COL_UPDATED_AT}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-          [
-            item.nameEn,
-            item.nameHi,
-            item.quantity,
-            item.unit,
-            item.category,
-            item.purchasePrice || null,
-            item.sellingPrice || null,
-            item.minStockAlert || null,
-            item.totalSold || 0,
-            item.updatedAt || null,
-          ],
-        );
-      }
-      console.log(
-        `[createTables] Seeded ${inventoryItems.length} inventory items`,
-      );
-    }
   } catch (error) {
     console.error('[createTables] Error creating table:', error);
     throw error;
@@ -363,36 +333,45 @@ export const createCustomer = async (payload: {
   try {
     let insertId: number | null = null;
 
-    await database.transaction(async (tx: any) => {
-      const [result] = await tx.executeSql(
-        `INSERT INTO ${TABLE_CUSTOMERS} (${COL_FIRST_NAME}, ${COL_LAST_NAME}, ${COL_PHONE}, ${COL_UDHAAR_AMOUNT}, ${COL_DEVICE_ID}, ${COL_CREATED_AT}) VALUES (?, ?, ?, ?, ?, ?);`,
-        [
-          payload.firstName,
-          payload.lastName,
-          payload.phone || null,
-          payload.udhaarAmount,
-          payload.deviceId,
-          createdAt,
-        ],
+    await new Promise<void>((resolve, reject) => {
+      database.transaction(
+        (tx: any) => {
+          tx.executeSql(
+            `INSERT INTO ${TABLE_CUSTOMERS} (${COL_FIRST_NAME}, ${COL_LAST_NAME}, ${COL_PHONE}, ${COL_UDHAAR_AMOUNT}, ${COL_DEVICE_ID}, ${COL_CREATED_AT}) VALUES (?, ?, ?, ?, ?, ?);`,
+            [
+              payload.firstName,
+              payload.lastName,
+              payload.phone || null,
+              payload.udhaarAmount,
+              payload.deviceId,
+              createdAt,
+            ],
+            (_transaction: any, result: any) => {
+              insertId = result?.insertId ?? null;
+              if (insertId !== null && payload.udhaarAmount > 0) {
+                tx.executeSql(
+                  `INSERT INTO ${TABLE_CUSTOMER_TRANSACTIONS} (${COL_CUSTOMER_ID}, ${COL_TRANSACTION_TYPE}, ${COL_TRANSACTION_AMOUNT}, ${COL_TRANSACTION_NOTE}, ${COL_CREATED_AT}) VALUES (?, ?, ?, ?, ?);`,
+                  [
+                    insertId,
+                    'Udhaar',
+                    payload.udhaarAmount,
+                    'Initial udhaar',
+                    createdAt,
+                  ],
+                );
+              }
+            },
+          );
+        },
+        (error: any) => reject(error),
+        () => {
+          if (insertId === null) {
+            reject(new Error('Failed to insert customer'));
+            return;
+          }
+          resolve();
+        },
       );
-
-      insertId = (result as any)?.insertId;
-      if (insertId === undefined || insertId === null) {
-        throw new Error('Failed to insert customer');
-      }
-
-      if (payload.udhaarAmount > 0) {
-        await tx.executeSql(
-          `INSERT INTO ${TABLE_CUSTOMER_TRANSACTIONS} (${COL_CUSTOMER_ID}, ${COL_TRANSACTION_TYPE}, ${COL_TRANSACTION_AMOUNT}, ${COL_TRANSACTION_NOTE}, ${COL_CREATED_AT}) VALUES (?, ?, ?, ?, ?);`,
-          [
-            insertId,
-            'Udhaar',
-            payload.udhaarAmount,
-            'Initial udhaar',
-            createdAt,
-          ],
-        );
-      }
     });
 
     return String(insertId);
@@ -504,30 +483,40 @@ export const addCustomerTransaction = async (
   try {
     let insertId: number | null = null;
 
-    await database.transaction(async (tx: any) => {
-      await tx.executeSql(
-        `UPDATE ${TABLE_CUSTOMERS} SET ${COL_UDHAAR_AMOUNT} = ${COL_UDHAAR_AMOUNT} + ? WHERE ${COL_ID} = ?;`,
-        [
-          payload.type === 'Payment' ? -payload.amount : payload.amount,
-          customerId,
-        ],
-      );
+    await new Promise<void>((resolve, reject) => {
+      database.transaction(
+        (tx: any) => {
+          tx.executeSql(
+            `UPDATE ${TABLE_CUSTOMERS} SET ${COL_UDHAAR_AMOUNT} = ${COL_UDHAAR_AMOUNT} + ? WHERE ${COL_ID} = ?;`,
+            [
+              payload.type === 'Payment' ? -payload.amount : payload.amount,
+              customerId,
+            ],
+          );
 
-      const [result] = await tx.executeSql(
-        `INSERT INTO ${TABLE_CUSTOMER_TRANSACTIONS} (${COL_CUSTOMER_ID}, ${COL_TRANSACTION_TYPE}, ${COL_TRANSACTION_AMOUNT}, ${COL_TRANSACTION_NOTE}, ${COL_CREATED_AT}) VALUES (?, ?, ?, ?, ?);`,
-        [
-          customerId,
-          payload.type,
-          payload.amount,
-          payload.note || null,
-          createdAt,
-        ],
+          tx.executeSql(
+            `INSERT INTO ${TABLE_CUSTOMER_TRANSACTIONS} (${COL_CUSTOMER_ID}, ${COL_TRANSACTION_TYPE}, ${COL_TRANSACTION_AMOUNT}, ${COL_TRANSACTION_NOTE}, ${COL_CREATED_AT}) VALUES (?, ?, ?, ?, ?);`,
+            [
+              customerId,
+              payload.type,
+              payload.amount,
+              payload.note || null,
+              createdAt,
+            ],
+            (_transaction: any, result: any) => {
+              insertId = result?.insertId ?? null;
+            },
+          );
+        },
+        (error: any) => reject(error),
+        () => {
+          if (insertId === null) {
+            reject(new Error('Failed to create transaction'));
+            return;
+          }
+          resolve();
+        },
       );
-
-      insertId = (result as any)?.insertId;
-      if (insertId === undefined || insertId === null) {
-        throw new Error('Failed to create transaction');
-      }
     });
 
     return String(insertId);

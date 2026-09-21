@@ -38,30 +38,14 @@ type BillLine = {
   total: number;
 };
 
-const parseBarcodeOrQuery = (v: string) => v.trim().toLowerCase();
-
 const CreateBillScreen: React.FC = () => {
   const { t } = useTranslation();
   const theme = useTheme();
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
 
   const [search, setSearch] = useState('');
-  // selectedItemId kept for future use
-  const [, setSelectedItemId] = useState<string | null>(null);
 
   const [lines, setLines] = useState<BillLine[]>([]);
-
-  const matchingItems = useMemo(() => {
-    const q = parseBarcodeOrQuery(search);
-    if (!q) return inventoryItems;
-    return inventoryItems.filter(i => {
-      return (
-        i.nameEn.toLowerCase().includes(q) ||
-        i.nameHi.toLowerCase().includes(q) ||
-        i.category.toLowerCase().includes(q)
-      );
-    });
-  }, [search]);
 
   const totals = useMemo(() => {
     const totalItems = lines.length;
@@ -71,27 +55,24 @@ const CreateBillScreen: React.FC = () => {
     return { totalItems, totalAmount, discount, amountDue };
   }, [lines]);
 
-  const openAddScreenForItem = (itemId: string) => {
-    setSelectedItemId(itemId);
-    navigation.navigate('AddBillItem', { initialItemId: itemId });
-  };
-
-  const removeLine = (lineId: string) => {
-    setLines(prev => prev.filter(l => l.lineId !== lineId));
+  const openAddScreen = () => {
+    navigation.navigate('AddBillItem', {
+      onGoBack: handleAddBillItem,
+    });
   };
 
   // Add line when coming from AddBillItemScreen
-  const route = useRoute<any>();
-  const billItemDraft = route?.params?.__billItemDraft as
-    | {
-        itemId: string;
-        qty: number;
-        unit: string;
-        pricePerUnit: number;
-      }
-    | undefined;
-
-  useEffect(() => {
+  const handleAddBillItem = (
+    billItemDraft:
+      | {
+          itemId: string;
+          qty: number;
+          unit: string;
+          pricePerUnit: number;
+        }
+      | undefined,
+  ) => {
+    console.log('handleAddBillItem called with:', billItemDraft);
     if (!billItemDraft) return;
 
     const { itemId, qty, unit, pricePerUnit } = billItemDraft;
@@ -116,7 +97,13 @@ const CreateBillScreen: React.FC = () => {
     };
 
     setLines(prev => [...prev, nextLine]);
-  }, [billItemDraft]);
+  };
+
+  const removeLine = (lineId: string) => {
+    setLines(prev => prev.filter(l => l.lineId !== lineId));
+  };
+
+  // Add line when coming from AddBillItemScreen
 
   const styles = React.useMemo(
     () =>
@@ -168,6 +155,8 @@ const CreateBillScreen: React.FC = () => {
           shadowOpacity: 0.04,
           shadowRadius: 10,
           elevation: 2,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
         },
         searchInput: {
           flex: 1,
@@ -321,6 +310,8 @@ const CreateBillScreen: React.FC = () => {
           borderRadius: 16,
           backgroundColor: theme.colors.background,
           alignItems: 'center',
+          borderWidth: 1,
+          borderColor: theme.colors.primary,
         },
         payButton: {
           flex: 1,
@@ -398,21 +389,21 @@ const CreateBillScreen: React.FC = () => {
             </View>
           ) : (
             lines.map(item => (
-              <View key={item.lineId} style={styles.tableRow}>
+              <View key={item?.lineId} style={styles.tableRow}>
                 <Text
                   style={[styles.tableText, styles.flex2]}
                   numberOfLines={1}
                 >
-                  {item.itemNameHi} ({item.itemNameEn})
+                  {item?.itemNameHi} ({item?.itemNameEn})
                 </Text>
                 <Text style={[styles.tableText, styles.flex1]}>
-                  {item.qty} {item.unit}
+                  {item?.qty} {item?.unit}
                 </Text>
                 <Text style={[styles.tableText, styles.flex1]}>
-                  ₹{item.pricePerUnit}
+                  ₹{item?.pricePerUnit}
                 </Text>
                 <Text style={[styles.tableText, styles.flex1]}>
-                  ₹{item.total.toFixed(2)}
+                  ₹{item?.total ? item?.total?.toFixed(2) : '0.00'}
                 </Text>
                 <TouchableOpacity
                   style={styles.iconButton}
@@ -425,16 +416,11 @@ const CreateBillScreen: React.FC = () => {
             ))
           )}
 
-          {/* Quick add from matching items (sample for now) */}
           <View style={styles.quickAddWrap}>
             <TouchableOpacity
               style={styles.addItemButton}
               activeOpacity={0.8}
-              onPress={() => {
-                const first = matchingItems[0];
-                if (first) openAddScreenForItem(first.id);
-              }}
-              disabled={matchingItems.length === 0}
+              onPress={openAddScreen}
             >
               <Plus size={18} color={theme.colors.primary} />
               <Text style={styles.addItemLabel}>{t('addItem')}</Text>

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -6,28 +6,24 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation, type NavigationProp } from '@react-navigation/native';
+import {
+  useFocusEffect,
+  useNavigation,
+  type NavigationProp,
+} from '@react-navigation/native';
 import { ArrowLeft } from 'lucide-react-native';
 import { useTheme } from '../theme';
 import { useTranslation } from '../i18n/LanguageContext';
 import TopSellingItem from '../components/TopSellingItem';
 import type { RootStackParamList } from '../types/navigation';
-import { inventoryItems } from '../data/inventoryItems';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-type TopSellingRow = {
-  rank: number;
-  name: string;
-  quantity: string;
-};
-
-const formatQty = (quantity: number | undefined) => {
-  if (quantity === undefined || Number.isNaN(quantity)) return '-';
-  return String(quantity);
-};
+import {
+  getTopSellingItems,
+  type TopSellingItem as TopSellingItemType,
+} from '../services/sqlite';
 
 const TopSellingItemsScreen: React.FC = () => {
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
 
   const theme = useTheme();
@@ -75,32 +71,26 @@ const TopSellingItemsScreen: React.FC = () => {
     [theme],
   );
 
-  const topSellingRows: TopSellingRow[] = useMemo(() => {
-    const rows = [...inventoryItems]
-      .map(item => {
-        const sold = typeof item.totalSold === 'number' ? item.totalSold : 0;
-        const unit = item.unit ? item.unit : '';
-        const name = language === 'hindi' ? item.nameHi : item.nameEn;
+  const [topSellingRows, setTopSellingRows] = useState<TopSellingItemType[]>(
+    [],
+  );
 
-        // `TopSellingItem` shows `quantity` string; we use sold quantity as the metric.
-        const quantity = `${sold} ${unit}`.trim();
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
 
-        return {
-          id: item.id,
-          sold,
-          name,
-          quantity,
-        };
-      })
-      .sort((a, b) => b.sold - a.sold);
+      const loadTopSellingItems = async () => {
+        const rows = await getTopSellingItems();
+        if (active) setTopSellingRows(rows);
+      };
 
-    return rows.map((row, index) => ({
-      rank: index + 1,
-      name: row.name,
-      quantity:
-        row.quantity === '0' || row.quantity === '0 ' ? '-' : row.quantity,
-    }));
-  }, [language]);
+      loadTopSellingItems();
+
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   return (
     <SafeAreaView style={styles.safeArea}>

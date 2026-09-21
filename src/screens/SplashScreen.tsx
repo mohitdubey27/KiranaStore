@@ -10,7 +10,7 @@ interface SplashScreenProps {
 
 const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
   const pulse = useRef(new Animated.Value(0)).current;
-  const { isLanguageLoaded, isLanguageSaved } = useTranslation();
+  const { isLanguageLoaded } = useTranslation();
 
   const theme = useTheme();
 
@@ -148,16 +148,10 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
       timer = setTimeout(async () => {
         if (!mounted) return;
 
-        if (isLanguageSaved) {
-          const login = await getLogin();
-          // eslint-disable-next-line no-console
-          console.log('SplashScreen: Login data:', login);
-          if (!mounted) return;
+        const login = await getLogin();
+        if (!mounted) return;
 
-          navigation.replace(login ? 'HomeScreen' : 'LoginScreen');
-        } else {
-          navigation.replace('StartScreen');
-        }
+        navigation.replace(login ? 'HomeScreen' : 'StartScreen');
       }, 1500);
     };
 
@@ -167,7 +161,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ navigation }) => {
       mounted = false;
       if (timer) clearTimeout(timer);
     };
-  }, [navigation, isLanguageLoaded, isLanguageSaved]);
+  }, [navigation, isLanguageLoaded]);
 
   const pulseScale = pulse.interpolate({
     inputRange: [0, 1],

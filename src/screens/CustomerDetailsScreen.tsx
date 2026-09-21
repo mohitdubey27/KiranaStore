@@ -9,7 +9,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  SafeAreaView,
   View,
 } from 'react-native';
 import {
@@ -21,6 +20,7 @@ import { useTheme } from '../theme';
 import BackButton from '../components/BackButton';
 import { useTranslation } from '../i18n/LanguageContext';
 import { Edit3 } from 'lucide-react-native';
+import Loader from '../components/Loader';
 import {
   getCustomerById,
   getTransactionsForCustomer,
@@ -29,6 +29,7 @@ import {
   CustomerTransactionRecord,
 } from '../services/sqlite/kiranaDb';
 import type { RootStackParamList } from '../types/navigation';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const CustomerDetailsScreen: React.FC = () => {
   const route = useRoute<any>();
@@ -54,7 +55,7 @@ const CustomerDetailsScreen: React.FC = () => {
     () =>
       StyleSheet.create({
         safeArea: { flex: 1, backgroundColor: theme.colors.background },
-        container: { padding: 16, paddingBottom: 32 },
+        container: { padding: 16, paddingBottom: 112 },
         headerRow: {
           flexDirection: 'row',
           alignItems: 'center',
@@ -201,7 +202,15 @@ const CustomerDetailsScreen: React.FC = () => {
         actionRow: {
           flexDirection: 'row',
           justifyContent: 'space-between',
-          marginTop: 10,
+        },
+        bottomActionRow: {
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 20,
+          padding: 16,
+          paddingBottom: 20,
+          backgroundColor: theme.colors.background,
         },
         actionButton: {
           flex: 1,
@@ -266,6 +275,7 @@ const CustomerDetailsScreen: React.FC = () => {
           flexDirection: 'row',
           marginTop: 8,
         },
+        whiteText: { color: theme.colors.onPrimary },
       }),
     [theme],
   );
@@ -373,9 +383,7 @@ const CustomerDetailsScreen: React.FC = () => {
       <SafeAreaView
         style={{ flex: 1, backgroundColor: theme.colors.background }}
       >
-        <Text style={{ color: theme.colors.textPrimary, padding: 16 }}>
-          {t('loading') || 'Loading...'}
-        </Text>
+        <Loader visible message={t('loading') || 'Loading...'} />
       </SafeAreaView>
     );
   }
@@ -420,7 +428,11 @@ const CustomerDetailsScreen: React.FC = () => {
           <Text style={styles.headerTitle}>
             {t('customerDetails') || 'Customer Details'}
           </Text>
-          <TouchableOpacity style={styles.editButton} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.editButton}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('AddCustomer', { customerId })}
+          >
             <Edit3 size={16} color={theme.colors.textPrimary} />
           </TouchableOpacity>
         </View>
@@ -514,27 +526,6 @@ const CustomerDetailsScreen: React.FC = () => {
           ))
         )}
 
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.actionOutline]}
-            activeOpacity={0.8}
-            onPress={() => openTransactionModal('Udhaar')}
-          >
-            <Text style={[styles.actionText, styles.actionOutlineText]}>
-              {t('addUdhaar') || 'Add Udhaar'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.actionSolid]}
-            activeOpacity={0.8}
-            onPress={() => openTransactionModal('Payment')}
-          >
-            <Text style={[styles.actionText, styles.actionOutlineText]}>
-              {t('addPayment') || 'Add Payment'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
         <Modal
           visible={showTransactionModal}
           animationType="slide"
@@ -572,7 +563,7 @@ const CustomerDetailsScreen: React.FC = () => {
                 style={[styles.modalInput, { height: 100 }]}
                 value={transactionNote}
                 onChangeText={setTransactionNote}
-                placeholder={t('enterAmount') || 'Enter note'}
+                placeholder={t('note') || 'Enter note'}
                 placeholderTextColor={theme.colors.placeholder}
                 multiline
               />
@@ -604,6 +595,32 @@ const CustomerDetailsScreen: React.FC = () => {
           </KeyboardAvoidingView>
         </Modal>
       </ScrollView>
+      <View style={styles.bottomActionRow}>
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.actionOutline]}
+            activeOpacity={0.8}
+            onPress={() => openTransactionModal('Udhaar')}
+          >
+            <Text style={[styles.actionText, styles.actionOutlineText]}>
+              {t('addUdhaar') || 'Add Udhaar'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.actionSolid]}
+            activeOpacity={0.8}
+            onPress={() => openTransactionModal('Payment')}
+          >
+            <Text style={styles.actionText}>
+              {t('addPayment') || 'Add Payment'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <Loader
+        visible={transactionSaving}
+        message={t('loading') || 'Saving...'}
+      />
     </SafeAreaView>
   );
 };

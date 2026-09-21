@@ -12,7 +12,7 @@ export type RootStackParamList = {
   AddItem: undefined;
   UdhaarList: undefined;
   CustomerDetails: { customerId?: string } | undefined;
-  AddCustomer: undefined;
+  AddCustomer: { customerId?: string } | undefined;
   ProductDetail: { productId: string };
 
   CreateBill:

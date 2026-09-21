@@ -1,21 +1,19 @@
-import React, { useMemo, useState } from 'react';
-import {
-  Alert,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../theme';
 import BackButton from '../components/BackButton';
 import CustomTextInput from '../components/CustomTextInput';
 import CustomButton from '../components/CustomButton';
+import Loader from '../components/Loader';
 import { useTranslation } from '../i18n/LanguageContext';
 import { getDeviceId } from '../utils/getDeviceId';
-import { createCustomer } from '../services/sqlite/kiranaDb';
+import {
+  createCustomer,
+  getCustomerById,
+  updateCustomer,
+} from '../services/sqlite/kiranaDb';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 
 const normalizePhone = (value: string) => value.replace(/[^0-9]/g, '');
@@ -23,7 +21,10 @@ const normalizePhone = (value: string) => value.replace(/[^0-9]/g, '');
 const AddCustomerScreen: React.FC = () => {
   const { t } = useTranslation();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const theme = useTheme();
+  const customerId = route.params?.customerId as string | undefined;
+  const isEditing = Boolean(customerId);
 
   const styles = React.useMemo(
     () =>
@@ -57,6 +58,24 @@ const AddCustomerScreen: React.FC = () => {
   const [udhaarAmount, setUdhaarAmount] = useState('');
 
   const [touched, setTouched] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!customerId) return;
+
+    getCustomerById(customerId)
+      .then(customer => {
+        if (!customer) return;
+        setFirstName(customer.firstName);
+        setLastName(customer.lastName);
+        setPhone(customer.phone || '');
+        setUdhaarAmount(String(customer.udhaarAmount));
+      })
+      .catch(error => {
+        console.error('[AddCustomerScreen] load customer error', error);
+        Alert.alert(t('error') || 'Error', 'Failed to load customer details');
+      });
+  }, [customerId, t]);
 
   const errors = useMemo(() => {
     if (!touched) return {} as Record<string, string>;
@@ -92,9 +111,12 @@ const AddCustomerScreen: React.FC = () => {
   const hasErrors = Object.keys(errors).length > 0;
 
   const onSave = async () => {
+    if (isSaving) return;
+
     setTouched(true);
     if (hasErrors) return;
 
+    setIsSaving(true);
     try {
       const deviceId = await getDeviceId();
       const payload = {
@@ -105,12 +127,17 @@ const AddCustomerScreen: React.FC = () => {
         deviceId,
       };
 
-      const customerId = await createCustomer(payload);
-
-      navigation.navigate('CustomerDetails', { customerId });
+      if (customerId) {
+        await updateCustomer(customerId, payload);
+      } else {
+        await createCustomer(payload);
+      }
+      navigation.goBack();
     } catch (e: any) {
       console.error('[AddCustomerScreen] save error', e);
       Alert.alert(t('error') || 'Error', e?.message || 'Failed to save');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -124,7 +151,9 @@ const AddCustomerScreen: React.FC = () => {
           <View style={styles.headerRow}>
             <BackButton onPress={() => navigation.goBack()} />
             <Text style={styles.headerTitle}>
-              {t('addCustomerTitle') || 'Add Customer'}
+              {isEditing
+                ? 'Edit Customer'
+                : t('addCustomerTitle') || 'Add Customer'}
             </Text>
             <View style={{ width: 40 }} />
           </View>
@@ -167,9 +196,15 @@ const AddCustomerScreen: React.FC = () => {
 
           <View style={{ marginTop: 8 }}>
             <CustomButton
-              title={t('save') || 'Save'}
+              title={
+                isSaving
+                  ? t('pleaseWait') || 'Please wait...'
+                  : isEditing
+                  ? 'Update'
+                  : t('save') || 'Save'
+              }
               onPress={onSave}
-              disabled={false}
+              disabled={isSaving}
               style={{ backgroundColor: theme.colors.primary }}
             />
           </View>
@@ -177,6 +212,10 @@ const AddCustomerScreen: React.FC = () => {
           <View style={{ height: 12 }} />
         </ScrollView>
       </KeyboardAwareScrollView>
+      <Loader
+        visible={isSaving}
+        message={t('pleaseWait') || 'Please wait...'}
+      />
     </SafeAreaView>
   );
 };

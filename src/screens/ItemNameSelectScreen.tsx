@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
   StyleSheet,
@@ -8,26 +8,23 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import {
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+} from '@react-navigation/native';
 import { ArrowLeft } from 'lucide-react-native';
 import { useTheme } from '../theme';
-import type { RootStackParamList } from '../types/navigation';
 import { useTranslation } from '../i18n/LanguageContext';
-import type { KiranaStoreItemBilingual } from '../data/kiranaStoreItemsBilingual';
-import { kiranaStoreItemsBilingual } from '../data/kiranaStoreItemsBilingual';
+import Loader from '../components/Loader';
+import {
+  getInventoryItems,
+  type InventoryItemRecord,
+} from '../services/sqlite';
 
 type ItemNameSelectRouteParams = {
   selectedItemId?: string;
   onSelect?: (itemId: string) => void;
-};
-
-const splitDisplayName = (displayName: string) => {
-  // format: "Hindi (English)"
-  const match = displayName.match(/^(.*)\((.*)\)\s*$/);
-  if (!match) return { hi: displayName, en: displayName };
-  const hi = match[1].trim();
-  const en = match[2].trim();
-  return { hi, en };
 };
 
 const ItemNameSelectScreen: React.FC = () => {
@@ -107,24 +104,39 @@ const ItemNameSelectScreen: React.FC = () => {
   );
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [items, setItems] = useState<InventoryItemRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadItems = useCallback(async () => {
+    setLoading(true);
+    try {
+      setItems(await getInventoryItems());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadItems();
+    }, [loadItems]),
+  );
 
   const params = (route.params || {}) as ItemNameSelectRouteParams;
   const selectedItemId = params.selectedItemId;
   const onSelect = params.onSelect;
 
-  const filteredItems: KiranaStoreItemBilingual[] = useMemo(() => {
+  const filteredItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return kiranaStoreItemsBilingual;
+    if (!q) return items;
 
-    return kiranaStoreItemsBilingual.filter(item => {
-      const { hi, en } = splitDisplayName(item.displayName);
+    return items.filter(item => {
       return (
-        hi.toLowerCase().includes(q) ||
-        en.toLowerCase().includes(q) ||
-        item.displayName.toLowerCase().includes(q)
+        item.nameHi.toLowerCase().includes(q) ||
+        item.nameEn.toLowerCase().includes(q)
       );
     });
-  }, [searchQuery]);
+  }, [items, searchQuery]);
 
   const handleSelect = (itemId: string) => {
     if (onSelect) {
@@ -136,9 +148,8 @@ const ItemNameSelectScreen: React.FC = () => {
     navigation.goBack();
   };
 
-  const getDisplayText = (item: KiranaStoreItemBilingual) => {
-    const { hi, en } = splitDisplayName(item.displayName);
-    return language === 'hindi' ? hi : en;
+  const getDisplayText = (item: InventoryItemRecord) => {
+    return language === 'hindi' ? item.nameHi : item.nameEn;
   };
 
   return (
@@ -164,33 +175,41 @@ const ItemNameSelectScreen: React.FC = () => {
           placeholderTextColor={theme.colors.textMuted}
         />
 
-        <FlatList
-          data={filteredItems}
-          keyExtractor={i => i.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={() => (
-            <Text style={styles.emptyText}>{t('noItemsFound')}</Text>
-          )}
-          renderItem={({ item }) => {
-            const isSelected = selectedItemId === item.id;
-            return (
-              <TouchableOpacity
-                style={styles.listItem}
-                onPress={() => handleSelect(item.id)}
-                accessibilityRole="button"
-              >
-                <View style={styles.itemDetails}>
-                  <Text style={styles.listText}>{getDisplayText(item)}</Text>
-                  <Text style={styles.listMeta}>{item.displayName}</Text>
-                </View>
+        {loading ? (
+          <Loader visible />
+        ) : (
+          <FlatList
+            data={filteredItems}
+            keyExtractor={i => i.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={() => (
+              <Text style={styles.emptyText}>{t('noItemsFound')}</Text>
+            )}
+            renderItem={({ item }) => {
+              const isSelected = selectedItemId === item.id;
+              return (
+                <TouchableOpacity
+                  style={styles.listItem}
+                  onPress={() => handleSelect(item.id)}
+                  accessibilityRole="button"
+                >
+                  <View style={styles.itemDetails}>
+                    <Text style={styles.listText}>{getDisplayText(item)}</Text>
+                    <Text style={styles.listMeta}>
+                      {language === 'hindi' ? item.nameEn : item.nameHi}
+                    </Text>
+                  </View>
 
-                {isSelected ? <Text style={styles.selectedMark}>✓</Text> : null}
-              </TouchableOpacity>
-            );
-          }}
-          ItemSeparatorComponent={() => <View style={styles.sep} />}
-        />
+                  {isSelected ? (
+                    <Text style={styles.selectedMark}>✓</Text>
+                  ) : null}
+                </TouchableOpacity>
+              );
+            }}
+            ItemSeparatorComponent={() => <View style={styles.sep} />}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
